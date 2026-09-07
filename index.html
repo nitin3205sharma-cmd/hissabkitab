@@ -1,32 +1,346 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>HisabKitab — Roz ka Kharcha Tracker</title>
-    <link
-      rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffb224' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 3h12'/%3E%3Cpath d='M6 8h12'/%3E%3Cpath d='M6 13l8.5 8'/%3E%3Cpath d='M6 13h3'/%3E%3Cpath d='M9 13c6.667 0 6.667-10 0-10'/%3E%3C/svg%3E"
-    />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
-      rel="stylesheet"
-    />
-    <style>
-      html,
-      body {
-        margin: 0;
-        padding: 0;
-        background-color: #070f0c;
-        color: #eaf4ed;
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HissabKitab - Dashboard</title>
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React 18, Babel CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            pine: { 700: "#1f3a3a", 800: "#142828", 850: "#102121", 900: "#0b1717", 950: "#060e0e" },
+            line: "rgba(255, 255, 255, 0.08)",
+            ink: "#f1f5f9", faint: "#94a3b8", fog: "#64748b",
+            amber: "#fbbf24", mint: "#34d399", coral: "#f87171",
+            blue: "#3b82f6", pink: "#ec4899", purple: "#a855f7"
+          }
+        }
       }
-    </style>
-    <script type="module" crossorigin src="/assets/index-DF2xzFFp.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-JyDQISSa.css">
-  </head>
-  <body>
-    <div id="root"></div>
-  </body>
+    }
+  </script>
+
+  <style>
+    body { background-color: #060e0e; color: #f1f5f9; font-family: ui-sans-serif, system-ui, sans-serif; margin: 0; padding: 0; }
+    .field { width: 100%; border-radius: 0.5rem; border: 1px solid rgba(255,255,255,0.1); background-color: rgba(11,23,23,0.85); padding: 0.55rem 0.8rem; color: #f1f5f9; outline: none; transition: all 0.2s; }
+    .field:focus { border-color: #fbbf24; box-shadow: 0 0 0 1px rgba(251,191,36,0.4); }
+    .tnum { font-variant-numeric: tabular-nums; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <div id="root" class="w-full"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+
+    const EXP_KEY = "hissabkitab_expenses_v2";
+    const INC_KEY = "hissabkitab_incomes_v2";
+    const todayStr = () => new Date().toISOString().split("T")[0];
+    const currentMonthStr = () => new Date().toISOString().slice(0, 7);
+
+    const CATEGORIES = [
+      { id: "kirana", label: "Kirana / Ration", color: "#10b981", necessary: true },
+      { id: "sabzi", label: "Sabzi & Phal", color: "#34d399", necessary: true },
+      { id: "travel", label: "Auto / Petrol", color: "#60a5fa", necessary: true },
+      { id: "bills", label: "Bijli / Recharge", color: "#818cf8", necessary: true },
+      { id: "family", label: "Family ko diye", color: "#eab308", necessary: true },
+      { id: "investment", label: "Investment/Saving", color: "#22c55e", necessary: true },
+      { id: "movie", label: "Movie / Fun", color: "#a855f7", necessary: false },
+      { id: "shopping", label: "Shopping", color: "#ec4899", necessary: false },
+      { id: "bahar", label: "Bahar ka Khana", color: "#f97316", necessary: false },
+      { id: "other", label: "Anya (Other)", color: "#94a3b8", necessary: false },
+    ];
+    const CAT_MAP = Object.fromEntries(CATEGORIES.map(c => [c.id, c]));
+    const QUICK_AMOUNTS = [50, 100, 500, 1000, 2000];
+
+    function App() {
+      const [expenses, setExpenses] = useState(() => {
+        try {
+          return JSON.parse(localStorage.getItem(EXP_KEY) || "[]");
+        } catch { return []; }
+      });
+      const [incomes, setIncomes] = useState(() => {
+        try {
+          return JSON.parse(localStorage.getItem(INC_KEY) || "{}");
+        } catch { return {}; }
+      });
+      const [selectedMonth, setSelectedMonth] = useState(currentMonthStr());
+
+      // Form State
+      const [amount, setAmount] = useState("");
+      const [note, setNote] = useState("");
+      const [categoryId, setCategoryId] = useState("kirana");
+      const [necessary, setNecessary] = useState(true);
+      const [date, setDate] = useState(todayStr());
+      const [editingId, setEditingId] = useState(null);
+
+      // Auto-save to LocalStorage
+      useEffect(() => {
+        localStorage.setItem(EXP_KEY, JSON.stringify(expenses));
+      }, [expenses]);
+
+      useEffect(() => {
+        localStorage.setItem(INC_KEY, JSON.stringify(incomes));
+      }, [incomes]);
+
+      const monthExpenses = useMemo(() => {
+        return expenses.filter(e => e.date?.startsWith(selectedMonth));
+      }, [expenses, selectedMonth]);
+
+      const currentIncome = Number(incomes[selectedMonth] || 0);
+
+      const { totalExpense, totalSavings, necessaryTotal, faltuTotal } = useMemo(() => {
+        let exp = 0, sav = 0, nec = 0, fal = 0;
+        monthExpenses.forEach(e => {
+          exp += e.amount;
+          if (e.categoryId === "investment") sav += e.amount;
+          if (e.necessary) nec += e.amount; else fal += e.amount;
+        });
+        return { totalExpense: exp, totalSavings: sav, necessaryTotal: nec, faltuTotal: fal };
+      }, [monthExpenses]);
+
+      const balance = currentIncome - totalExpense;
+
+      const categoryTotals = useMemo(() => {
+        const map = {};
+        monthExpenses.forEach(e => map[e.categoryId] = (map[e.categoryId] || 0) + e.amount);
+        return CATEGORIES.map(c => ({
+          ...c,
+          amount: map[c.id] || 0,
+          percent: totalExpense ? Math.round(((map[c.id] || 0) / totalExpense) * 100) : 0
+        })).filter(c => c.amount > 0).sort((a,b) => b.amount - a.amount);
+      }, [monthExpenses, totalExpense]);
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        const n = parseFloat(amount);
+        if (!n || n <= 0) return alert("Sahi amount dalein!");
+
+        if (editingId) {
+          setExpenses(prev => prev.map(item => item.id === editingId ? { amount: n, note, categoryId, necessary, date, id: editingId } : item));
+          setEditingId(null);
+        } else {
+          setExpenses(prev => [{ id: "exp_" + Date.now(), amount: n, note, categoryId, necessary, date }, ...prev]);
+        }
+        setAmount("");
+        setNote("");
+      };
+
+      const handleEdit = (item) => {
+        setAmount(item.amount);
+        setNote(item.note);
+        setCategoryId(item.categoryId);
+        setNecessary(item.necessary);
+        setDate(item.date);
+        setEditingId(item.id);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      };
+
+      const handleDelete = (id) => {
+        if (confirm("Kya aap sach me is kharche ko delete karna chahte hain?")) {
+          setExpenses(prev => prev.filter(e => e.id !== id));
+        }
+      };
+
+      const handleClear = () => {
+        if (confirm("Kavach Savdhani: Sara data saaf karna hai?") && prompt("Type karein 'CLEAR'") === "CLEAR") {
+          setExpenses([]);
+          setIncomes({});
+          localStorage.removeItem(EXP_KEY);
+          localStorage.removeItem(INC_KEY);
+        }
+      };
+
+      return (
+        <div className="max-w-6xl mx-auto p-4 sm:p-6 space-y-6">
+          {/* Header */}
+          <header className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-4">
+            <div>
+              <h1 className="text-2xl font-black text-amber flex items-center gap-2">💰 HissabKitab Cloud</h1>
+              <p className="text-xs text-fog">Auto-saving Personal Budget Tracker</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={e => setSelectedMonth(e.target.value)}
+                className="bg-pine-850 border border-line px-3 py-1.5 rounded-lg text-sm text-ink outline-none"
+              />
+              <button onClick={handleClear} className="text-xs text-coral hover:bg-coral/10 px-3 py-1.5 rounded border border-coral/30">
+                Sab Mita Do
+              </button>
+            </div>
+          </header>
+
+          {/* Top 3 Cards Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-pine-850 p-5 rounded-2xl border border-line">
+              <span className="text-xs text-fog font-semibold">Mahine Ki Salary / Income</span>
+              <div className="relative mt-2">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-fog font-bold">₹</span>
+                <input
+                  type="number"
+                  value={currentIncome || ""}
+                  onChange={e => setIncomes(prev => ({ ...prev, [selectedMonth]: e.target.value }))}
+                  placeholder="0"
+                  className="field pl-8 text-xl font-bold text-mint"
+                />
+              </div>
+            </div>
+
+            <div className="bg-pine-850 p-5 rounded-2xl border border-line">
+              <span className="text-xs text-fog font-semibold">Kul Kharcha</span>
+              <div className="text-3xl font-black text-coral mt-1 tnum">₹{totalExpense.toLocaleString("en-IN")}</div>
+              <div className="text-[11px] text-fog mt-1">Zaroori: ₹{necessaryTotal.toLocaleString("en-IN")} | Faltu: ₹{faltuTotal.toLocaleString("en-IN")}</div>
+            </div>
+
+            <div className="bg-pine-850 p-5 rounded-2xl border border-line">
+              <span className="text-xs text-fog font-semibold">Bachat / Balance Remaining</span>
+              <div className={`text-3xl font-black mt-1 tnum ${balance >= 0 ? "text-mint" : "text-coral"}`}>
+                ₹{balance.toLocaleString("en-IN")}
+              </div>
+              <div className="text-[11px] text-mint mt-1">Invested / Savings: ₹{totalSavings.toLocaleString("en-IN")}</div>
+            </div>
+          </div>
+
+          {/* Form + Breakdown Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Add Form (5 Cols) */}
+            <div className="lg:col-span-5 bg-pine-850 p-5 rounded-2xl border border-line">
+              <h3 className="font-bold text-sm text-amber mb-3">{editingId ? "Entry Update Karein" : "Naya Kharcha Jodein"}</h3>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <label className="text-xs text-fog block mb-1">Kitna Kharch Hua?</label>
+                  <input
+                    type="number"
+                    value={amount}
+                    onChange={e => setAmount(e.target.value)}
+                    placeholder="₹ 0"
+                    className="field text-lg font-bold tnum"
+                  />
+                  <div className="flex gap-1.5 flex-wrap mt-2">
+                    {QUICK_AMOUNTS.map(q => (
+                      <button key={q} type="button" onClick={() => setAmount(String(q))} className="text-[11px] bg-pine-900 border border-line px-2 py-1 rounded text-fog hover:text-amber">+₹{q}</button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-fog block mb-1">Note (Optional)</label>
+                  <input
+                    type="text"
+                    value={note}
+                    onChange={e => setNote(e.target.value)}
+                    placeholder="Jaise: Chai, Petrol, Ration"
+                    className="field text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-fog block mb-1">Category</label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {CATEGORIES.map(c => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => { setCategoryId(c.id); setNecessary(c.necessary); }}
+                        className={`px-2 py-1.5 rounded-lg border text-left text-xs flex items-center gap-1.5 ${categoryId === c.id ? "border-amber bg-amber/10 text-ink" : "border-line text-fog"}`}
+                      >
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
+                        <span className="truncate">{c.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-fog block mb-1">Prakar (Type)</label>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setNecessary(true)} className={`flex-1 py-1.5 text-xs font-bold rounded-lg border ${necessary ? "border-mint bg-mint/15 text-mint" : "border-line text-fog"}`}>Zaroori</button>
+                    <button type="button" onClick={() => setNecessary(false)} className={`flex-1 py-1.5 text-xs font-bold rounded-lg border ${!necessary ? "border-coral bg-coral/15 text-coral" : "border-line text-fog"}`}>Faltu (Want)</button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-fog block mb-1">Tareekh (Date)</label>
+                  <input type="date" value={date} onChange={e => setDate(e.target.value)} className="field text-xs" />
+                </div>
+
+                <button type="submit" className="w-full py-2.5 bg-amber text-pine-950 font-bold rounded-xl text-sm">
+                  {editingId ? "Update Save Karein" : "Kharcha Jod Do"}
+                </button>
+                {editingId && (
+                  <button type="button" onClick={() => { setEditingId(null); setAmount(""); setNote(""); }} className="w-full py-1 text-xs text-fog">Cancel Edit</button>
+                )}
+              </form>
+            </div>
+
+            {/* Category Stats + Timeline (7 Cols) */}
+            <div className="lg:col-span-7 space-y-6">
+              {/* Category Breakdown */}
+              <div className="bg-pine-850 p-5 rounded-2xl border border-line">
+                <h3 className="font-bold text-sm text-ink mb-3">Category Breakdown</h3>
+                {categoryTotals.length === 0 ? <p className="text-xs text-fog">Is mahine koi record nahi hai.</p> : (
+                  <div className="space-y-2">
+                    {categoryTotals.map(c => (
+                      <div key={c.id}>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />{c.label}</span>
+                          <span className="font-bold">₹{c.amount.toLocaleString("en-IN")} ({c.percent}%)</span>
+                        </div>
+                        <div className="w-full bg-pine-950 h-1.5 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${c.percent}%`, backgroundColor: c.color }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Timeline List */}
+              <div className="bg-pine-850 p-5 rounded-2xl border border-line">
+                <h3 className="font-bold text-sm text-ink mb-3">Roz Ka Hissab</h3>
+                <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                  {monthExpenses.length === 0 ? <p className="text-xs text-fog">Koi entry darj nahi hai.</p> : (
+                    monthExpenses.map(item => {
+                      const cat = CAT_MAP[item.categoryId] || { label: "Anya", color: "#888" };
+                      return (
+                        <div key={item.id} className="flex items-center justify-between p-2.5 rounded-xl bg-pine-900 border border-line">
+                          <div className="truncate mr-2">
+                            <div className="text-xs font-bold text-ink truncate">{item.note || cat.label}</div>
+                            <div className="text-[10px] text-fog">{item.date} • <span style={{ color: cat.color }}>{cat.label}</span> • <span className={item.necessary ? "text-mint" : "text-coral"}>{item.necessary ? "Zaroori" : "Faltu"}</span></div>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <span className="font-black text-sm text-ink tnum">₹{item.amount.toLocaleString("en-IN")}</span>
+                            <button onClick={() => handleEdit(item)} className="text-xs text-amber hover:underline">Edit</button>
+                            <button onClick={() => handleDelete(item.id)} className="text-xs text-coral hover:underline">Del</button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
 </html>
