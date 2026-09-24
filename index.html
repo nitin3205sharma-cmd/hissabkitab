@@ -3,15 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>HissabKitab - Dashboard</title>
+  <title>HissabKitab Pro - Landscape Dashboard</title>
 
-  <!-- Tailwind CDN -->
+  <!-- Tailwind CSS & React & Chart.js -->
   <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- React 18, Babel CDN -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <script>
     tailwind.config = {
@@ -20,9 +19,9 @@
           colors: {
             pine: { 700: "#1f3a3a", 800: "#142828", 850: "#102121", 900: "#0b1717", 950: "#060e0e" },
             line: "rgba(255, 255, 255, 0.08)",
+            linestrong: "rgba(255, 255, 255, 0.2)",
             ink: "#f1f5f9", faint: "#94a3b8", fog: "#64748b",
-            amber: "#fbbf24", mint: "#34d399", coral: "#f87171",
-            blue: "#3b82f6", pink: "#ec4899", purple: "#a855f7"
+            amber: "#fbbf24", mint: "#34d399", coral: "#f87171"
           }
         }
       }
@@ -30,74 +29,500 @@
   </script>
 
   <style>
-    body { background-color: #060e0e; color: #f1f5f9; font-family: ui-sans-serif, system-ui, sans-serif; margin: 0; padding: 0; }
-    .field { width: 100%; border-radius: 0.5rem; border: 1px solid rgba(255,255,255,0.1); background-color: rgba(11,23,23,0.85); padding: 0.55rem 0.8rem; color: #f1f5f9; outline: none; transition: all 0.2s; }
-    .field:focus { border-color: #fbbf24; box-shadow: 0 0 0 1px rgba(251,191,36,0.4); }
+    html, body {
+      background-color: #060e0e;
+      color: #f1f5f9;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+      overflow-y: auto;
+    }
+    .field {
+      width: 100%;
+      border-radius: 0.5rem;
+      border: 1px solid rgba(255,255,255,0.1);
+      background-color: rgba(11,23,23,0.85);
+      padding: 0.55rem 0.8rem;
+      color: #f1f5f9;
+      outline: none;
+      transition: all 0.2s;
+    }
+    .field:focus {
+      border-color: #fbbf24;
+      box-shadow: 0 0 0 1px rgba(251,191,36,0.4);
+    }
     .tnum { font-variant-numeric: tabular-nums; }
-    ::-webkit-scrollbar { width: 6px; }
+    
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+    ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
   </style>
 </head>
-<body class="min-h-screen flex flex-col">
+<body class="bg-pine-950 text-ink pb-12">
 
-  <div id="root" class="w-full"></div>
+  <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useMemo } = React;
+    const { useState, useEffect, useRef, useMemo } = React;
 
-    const EXP_KEY = "hissabkitab_expenses_v2";
-    const INC_KEY = "hissabkitab_incomes_v2";
+    const EXP_KEY = "hissabkitab_v3_expenses";
+    const INC_KEY = "hissabkitab_v3_incomes";
+    const CAT_KEY = "hissabkitab_v3_custom_categories";
+
     const todayStr = () => new Date().toISOString().split("T")[0];
     const currentMonthStr = () => new Date().toISOString().slice(0, 7);
 
-    const CATEGORIES = [
+    // Format YYYY-MM to Month Name Year (e.g. 2026-09 -> September 2026)
+    const formatMonthDisplay = (mStr) => {
+      if (!mStr) return "";
+      const [y, m] = mStr.split("-");
+      const date = new Date(parseInt(y), parseInt(m) - 1, 1);
+      return date.toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+    };
+
+    // Default categories jisme Credit Card Bill bhi add kar diya gaya hai
+    const DEFAULT_CATEGORIES = [
       { id: "kirana", label: "Kirana / Ration", color: "#10b981", necessary: true },
       { id: "sabzi", label: "Sabzi & Phal", color: "#34d399", necessary: true },
       { id: "travel", label: "Auto / Petrol", color: "#60a5fa", necessary: true },
       { id: "bills", label: "Bijli / Recharge", color: "#818cf8", necessary: true },
+      { id: "credit_card_bill", label: "Credit Card Bill", color: "#f43f5e", necessary: true },
       { id: "family", label: "Family ko diye", color: "#eab308", necessary: true },
       { id: "investment", label: "Investment/Saving", color: "#22c55e", necessary: true },
       { id: "movie", label: "Movie / Fun", color: "#a855f7", necessary: false },
+      { id: "ghumna", label: "Ghumna / Trip", color: "#3b82f6", necessary: false },
       { id: "shopping", label: "Shopping", color: "#ec4899", necessary: false },
       { id: "bahar", label: "Bahar ka Khana", color: "#f97316", necessary: false },
       { id: "other", label: "Anya (Other)", color: "#94a3b8", necessary: false },
     ];
-    const CAT_MAP = Object.fromEntries(CATEGORIES.map(c => [c.id, c]));
-    const QUICK_AMOUNTS = [50, 100, 500, 1000, 2000];
 
-    function App() {
-      const [expenses, setExpenses] = useState(() => {
-        try {
-          return JSON.parse(localStorage.getItem(EXP_KEY) || "[]");
-        } catch { return []; }
-      });
-      const [incomes, setIncomes] = useState(() => {
-        try {
-          return JSON.parse(localStorage.getItem(INC_KEY) || "{}");
-        } catch { return {}; }
-      });
-      const [selectedMonth, setSelectedMonth] = useState(currentMonthStr());
+    const QUICK_AMOUNTS = [50, 100, 200, 500, 1000, 2000];
 
-      // Form State
+    // Icons
+    const IPlus = ({ className="w-4 h-4" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>;
+    const ITrash = ({ className="w-4 h-4" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>;
+    const IEdit = ({ className="w-4 h-4" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" /></svg>;
+    const IWallet = ({ className="w-4 h-4" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21 12a2.25 2.25 0 00-2.25-2.25H15a3 3 0 11-6 0H5.25A2.25 2.25 0 003 12m18 0v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 9m18 0V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v3" /></svg>;
+    const IBank = ({ className="w-4 h-4" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.315 48.315 0 0012 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75z" /></svg>;
+    const IDownload = ({ className="w-4 h-4" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>;
+    const IUpload = ({ className="w-4 h-4" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>;
+    const IHistory = ({ className="w-4 h-4" }) => <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+
+    // 1. ZAROORI VS FALTU DONUT CHART
+    function SplitDonutChart({ nec, fal }) {
+      const chartRef = useRef(null);
+      const canvasRef = useRef(null);
+      const total = nec + fal;
+
+      useEffect(() => {
+        if (!canvasRef.current) return;
+        if (chartRef.current) chartRef.current.destroy();
+
+        const ctx = canvasRef.current.getContext("2d");
+        chartRef.current = new Chart(ctx, {
+          type: "doughnut",
+          data: {
+            labels: ["Zaroori", "Faltu"],
+            datasets: [{
+              data: total > 0 ? [nec, fal] : [1],
+              backgroundColor: total > 0 ? ["#34d399", "#f87171"] : ["rgba(255,255,255,0.08)"],
+              borderWidth: 0,
+              hoverOffset: 4
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: "70%",
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                enabled: total > 0,
+                callbacks: { label: (c) => ` ₹${c.raw.toLocaleString("en-IN")}` }
+              }
+            }
+          }
+        });
+
+        return () => { if (chartRef.current) chartRef.current.destroy(); };
+      }, [nec, fal, total]);
+
+      const necPct = total > 0 ? Math.round((nec / total) * 100) : 0;
+      const falPct = total > 0 ? Math.round((fal / total) * 100) : 0;
+
+      return (
+        <div className="bg-pine-850 p-5 rounded-2xl border border-line shadow-xl">
+          <h4 className="text-xs font-bold text-faint mb-3">Zaroori vs Faltu Vibhajan</h4>
+          <div className="flex items-center gap-4">
+            <div className="relative w-28 h-28 shrink-0">
+              <canvas ref={canvasRef}></canvas>
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-[10px] text-fog">Ratio</span>
+                <span className="text-xs font-bold text-ink">{total > 0 ? `${necPct}%` : "0%"}</span>
+              </div>
+            </div>
+            <div className="flex-1 space-y-2 text-xs">
+              <div className="flex justify-between items-center border-b border-line pb-1.5">
+                <span className="text-mint font-semibold">Zaroori ({necPct}%):</span>
+                <span className="font-bold tnum">₹{nec.toLocaleString("en-IN")}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-coral font-semibold">Faltu ({falPct}%):</span>
+                <span className="font-bold tnum">₹{fal.toLocaleString("en-IN")}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 2. HISTORICAL COMPARISON BAR CHART & TABLE
+    function HistoricalSection({ allMonthStats, currentMonth, onSelectMonth }) {
+      const chartRef = useRef(null);
+      const canvasRef = useRef(null);
+
+      useEffect(() => {
+        if (!canvasRef.current) return;
+        if (chartRef.current) chartRef.current.destroy();
+
+        const displayData = [...allMonthStats].slice(0, 6).reverse();
+
+        const ctx = canvasRef.current.getContext("2d");
+        chartRef.current = new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels: displayData.map(d => formatMonthDisplay(d.month).split(" ")[0]),
+            datasets: [
+              {
+                label: "Income (Aaye)",
+                data: displayData.map(d => d.income),
+                backgroundColor: "#3b82f6",
+                borderRadius: 4
+              },
+              {
+                label: "Kharcha (Gaye)",
+                data: displayData.map(d => d.expense),
+                backgroundColor: "#f87171",
+                borderRadius: 4
+              },
+              {
+                label: "Saving (Bache)",
+                data: displayData.map(d => d.savings),
+                backgroundColor: "#22c55e",
+                borderRadius: 4
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: { grid: { display: false }, ticks: { color: "#94a3b8", font: { size: 10 } } },
+              y: { grid: { color: "rgba(255,255,255,0.05)" }, ticks: { color: "#94a3b8", font: { size: 10 } } }
+            },
+            plugins: {
+              legend: { position: "top", labels: { color: "#cbd5e1", font: { size: 11 }, boxWidth: 12 } }
+            }
+          }
+        });
+
+        return () => { if (chartRef.current) chartRef.current.destroy(); };
+      }, [allMonthStats]);
+
+      return (
+        <div className="bg-pine-850 p-6 rounded-2xl border border-line shadow-xl mt-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+            <div>
+              <h3 className="text-base font-bold text-ink flex items-center gap-2">
+                <IHistory className="w-5 h-5 text-amber" /> Purane Mahino ka Hissab (Historical Data)
+              </h3>
+              <p className="text-xs text-fog mt-0.5">Pichle mahino ki income, kharche aur saving ka mukabla</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+            {/* Chart Area */}
+            <div className="lg:col-span-6 h-56 relative bg-pine-900/40 p-3 rounded-xl border border-line">
+              <canvas ref={canvasRef}></canvas>
+            </div>
+
+            {/* Historical Breakdown Table */}
+            <div className="lg:col-span-6 overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-line text-faint uppercase tracking-wider">
+                    <th className="pb-2.5">Mahina</th>
+                    <th className="pb-2.5">Income</th>
+                    <th className="pb-2.5">Kharcha</th>
+                    <th className="pb-2.5">Saving</th>
+                    <th className="pb-2.5 text-right">Balance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {allMonthStats.map((item) => {
+                    const isSelected = item.month === currentMonth;
+                    return (
+                      <tr 
+                        key={item.month} 
+                        onClick={() => onSelectMonth(item.month)}
+                        className={`cursor-pointer transition-colors hover:bg-white/5 ${isSelected ? "bg-amber/10 font-bold" : ""}`}
+                      >
+                        <td className="py-2.5 text-ink flex items-center gap-1.5">
+                          {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-amber shrink-0"></span>}
+                          <span>{formatMonthDisplay(item.month)}</span>
+                        </td>
+                        <td className="py-2.5 text-blue-400 tnum">₹{item.income.toLocaleString("en-IN")}</td>
+                        <td className="py-2.5 text-coral tnum">₹{item.expense.toLocaleString("en-IN")}</td>
+                        <td className="py-2.5 text-mint tnum">₹{item.savings.toLocaleString("en-IN")}</td>
+                        <td className={`py-2.5 text-right tnum ${item.balance >= 0 ? "text-mint font-semibold" : "text-coral font-semibold"}`}>
+                          ₹{item.balance.toLocaleString("en-IN")}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <div className="text-[11px] text-fog mt-2">💡 Kisi bhi mahine par click karke uska pura hissab upar khol sakte hain.</div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 3. ADD / EDIT EXPENSE FORM (Custom Category Creation Added)
+    function AddExpenseForm({ editing, onSubmit, onCancel, categories, onAddCategory }) {
       const [amount, setAmount] = useState("");
       const [note, setNote] = useState("");
       const [categoryId, setCategoryId] = useState("kirana");
       const [necessary, setNecessary] = useState(true);
       const [date, setDate] = useState(todayStr());
-      const [editingId, setEditingId] = useState(null);
 
-      // Auto-save to LocalStorage
+      // Custom Category Form State
+      const [showAddCat, setShowAddCat] = useState(false);
+      const [newCatName, setNewCatName] = useState("");
+      const [newCatNecessary, setNewCatNecessary] = useState(true);
+      const [newCatColor, setNewCatColor] = useState("#38bdf8");
+
+      const catMap = useMemo(() => Object.fromEntries(categories.map(c => [c.id, c])), [categories]);
+
       useEffect(() => {
-        localStorage.setItem(EXP_KEY, JSON.stringify(expenses));
-      }, [expenses]);
+        if (editing) {
+          setAmount(String(editing.amount)); setNote(editing.note || "");
+          setCategoryId(editing.categoryId || "kirana"); setNecessary(editing.necessary);
+          setDate(editing.date || todayStr());
+        } else {
+          setAmount(""); setNote(""); setDate(todayStr());
+        }
+      }, [editing]);
 
-      useEffect(() => {
-        localStorage.setItem(INC_KEY, JSON.stringify(incomes));
-      }, [incomes]);
+      const submit = (e) => {
+        e.preventDefault();
+        const n = parseFloat(amount);
+        if (!n || n <= 0) return alert("Kripya sahi amount dalein!");
+        onSubmit({ amount: n, note, categoryId, necessary, date }, editing?.id);
+        if (!editing) { setAmount(""); setNote(""); }
+      };
 
+      const handleCreateCategory = (e) => {
+        e.preventDefault();
+        const trimmed = newCatName.trim();
+        if (!trimmed) return alert("Kripya category ka naam likhein!");
+        const newCat = {
+          id: "custom_" + Date.now(),
+          label: trimmed,
+          color: newCatColor,
+          necessary: newCatNecessary
+        };
+        onAddCategory(newCat);
+        setCategoryId(newCat.id);
+        setNecessary(newCat.necessary);
+        setNewCatName("");
+        setShowAddCat(false);
+      };
+
+      return (
+        <section className="rounded-2xl border border-line bg-pine-850 shadow-xl overflow-hidden flex flex-col">
+          <div className="p-4 border-b border-line flex items-center justify-between">
+            <h3 className="font-bold text-base text-amber">{editing ? "Entry Update Karein" : "Naya Kharcha Jodein"}</h3>
+            {editing && <span className="text-xs text-amber bg-amber/10 border border-amber/30 px-2 py-0.5 rounded">Edit Mode</span>}
+          </div>
+          <form onSubmit={submit} className="p-5 space-y-4">
+            <div>
+              <label className="text-xs font-bold text-faint mb-1 block">Kitna Kharch Hua?</label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-fog font-bold">₹</span>
+                <input value={amount} onChange={(e) => setAmount(e.target.value)} type="number" placeholder="0" className="field pl-8 text-xl font-bold tnum" />
+              </div>
+              <div className="mt-2 flex gap-1.5 flex-wrap">
+                {QUICK_AMOUNTS.map(q => (
+                  <button key={q} type="button" onClick={() => setAmount(String(q))} className="text-xs font-semibold px-2 py-1 rounded border border-line text-fog hover:text-amber bg-pine-900">+₹{q}</button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-faint mb-1 block">Kya Khareeda / Kaha Diye?</label>
+              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (Jaise: Ration, Petrol, SIP, Credit Card...)" className="field" />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-bold text-faint">Category Chunein</label>
+                <button 
+                  type="button" 
+                  onClick={() => setShowAddCat(!showAddCat)} 
+                  className="text-[11px] text-amber hover:underline font-semibold flex items-center gap-1"
+                >
+                  <IPlus className="w-3 h-3" /> {showAddCat ? "Band Karein" : "+ Nayi Category Banayein"}
+                </button>
+              </div>
+
+              {/* Custom Category Creation Form */}
+              {showAddCat && (
+                <div className="p-3 mb-2 rounded-xl bg-pine-900/90 border border-amber/30 space-y-2.5 animate-fadeIn">
+                  <span className="text-[11px] text-amber font-bold block">Nayi Custom Category Banayein</span>
+                  <input
+                    type="text"
+                    value={newCatName}
+                    onChange={(e) => setNewCatName(e.target.value)}
+                    placeholder="Category Ka Naam (e.g. Gym, Pet, Books)"
+                    className="field text-xs py-1.5"
+                  />
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] text-fog">Color:</span>
+                      <input 
+                        type="color" 
+                        value={newCatColor} 
+                        onChange={(e) => setNewCatColor(e.target.value)} 
+                        className="w-7 h-7 rounded border-0 bg-transparent cursor-pointer"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1 text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => setNewCatNecessary(true)}
+                        className={`px-2 py-1 rounded border ${newCatNecessary ? "border-mint bg-mint/20 text-mint font-bold" : "border-line text-fog"}`}
+                      >
+                        Zaroori
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNewCatNecessary(false)}
+                        className={`px-2 py-1 rounded border ${!newCatNecessary ? "border-coral bg-coral/20 text-coral font-bold" : "border-line text-fog"}`}
+                      >
+                        Faltu
+                      </button>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCreateCategory}
+                    className="w-full py-1.5 bg-amber/20 hover:bg-amber/30 border border-amber/40 text-amber text-xs font-bold rounded-lg transition"
+                  >
+                    Category Save Karein
+                  </button>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                {categories.map(c => (
+                  <button key={c.id} type="button" onClick={() => { setCategoryId(c.id); setNecessary(c.necessary); }} className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs text-left transition-all ${categoryId === c.id ? "text-ink font-bold border-amber/60 bg-white/10" : "border-line text-fog bg-pine-900/40 hover:text-ink"}`}>
+                    <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: c.color }} />
+                    <span className="truncate">{c.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-faint mb-1 block">Zaroorat thi ya Faltu?</label>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setNecessary(true)} className={`flex-1 py-2 text-xs font-bold rounded-lg border transition ${necessary ? "border-mint bg-mint/15 text-mint" : "border-line text-fog bg-pine-900/40"}`}>Zaroori (Need)</button>
+                <button type="button" onClick={() => setNecessary(false)} className={`flex-1 py-2 text-xs font-bold rounded-lg border transition ${!necessary ? "border-coral bg-coral/15 text-coral" : "border-line text-fog bg-pine-900/40"}`}>Faltu (Want)</button>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-faint mb-1 block">Date</label>
+              <input type="date" value={date} max={todayStr()} onChange={(e) => setDate(e.target.value)} className="field tnum" />
+            </div>
+            
+            <button type="submit" className="w-full mt-3 rounded-xl bg-amber text-pine-950 font-bold py-3 hover:bg-[#ffc14d] active:scale-[.98] transition cursor-pointer">
+              {editing ? "Update Save Karo" : "Entry Jod Do"}
+            </button>
+            {editing && <button type="button" onClick={onCancel} className="w-full py-1 text-xs text-fog hover:text-ink cursor-pointer">Cancel Edit</button>}
+          </form>
+        </section>
+      );
+    }
+
+    // 4. MAIN APP COMPONENT
+    function App() {
+      // Starter expenses
+      const [expenses, setExpenses] = useState(() => {
+        const saved = localStorage.getItem(EXP_KEY);
+        if (saved) return JSON.parse(saved);
+        return [
+          { id: "e1", amount: 4500, note: "Monthly Kirana Ration", categoryId: "kirana", necessary: true, date: todayStr() },
+          { id: "e2", amount: 10000, note: "Mutual Fund SIP Saving", categoryId: "investment", necessary: true, date: todayStr() },
+          { id: "e3", amount: 800, note: "Weekend Movie Ticket", categoryId: "movie", necessary: false, date: todayStr() },
+        ];
+      });
+
+      // Categories state with persistence
+      const [categories, setCategories] = useState(() => {
+        const saved = localStorage.getItem(CAT_KEY);
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            // Default categories me se agar koi missing ho (jaise credit_card_bill) to combine kar lein
+            const existingIds = new Set(parsed.map(c => c.id));
+            const merged = [...parsed];
+            DEFAULT_CATEGORIES.forEach(dc => {
+              if (!existingIds.has(dc.id)) merged.push(dc);
+            });
+            return merged;
+          } catch(e) {}
+        }
+        return DEFAULT_CATEGORIES;
+      });
+
+      const [incomes, setIncomes] = useState(() => {
+        const saved = localStorage.getItem(INC_KEY);
+        if (saved) return JSON.parse(saved);
+        const curM = currentMonthStr();
+        return { [curM]: "45000" };
+      });
+
+      const [selectedMonth, setSelectedMonth] = useState(currentMonthStr());
+      const [editingItem, setEditingItem] = useState(null);
+      const fileInputRef = useRef(null);
+
+      // Auto save
+      useEffect(() => localStorage.setItem(EXP_KEY, JSON.stringify(expenses)), [expenses]);
+      useEffect(() => localStorage.setItem(INC_KEY, JSON.stringify(incomes)), [incomes]);
+      useEffect(() => localStorage.setItem(CAT_KEY, JSON.stringify(categories)), [categories]);
+
+      const catMap = useMemo(() => Object.fromEntries(categories.map(c => [c.id, c])), [categories]);
+
+      // Add custom category
+      const handleAddCategory = (newCat) => {
+        setCategories(prev => [...prev, newCat]);
+      };
+
+      // Month Switching Helpers (Next/Prev)
+      const changeMonthBy = (delta) => {
+        const [year, month] = selectedMonth.split("-").map(Number);
+        const d = new Date(year, month - 1 + delta, 1);
+        const nextY = d.getFullYear();
+        const nextM = String(d.getMonth() + 1).padStart(2, '0');
+        setSelectedMonth(`${nextY}-${nextM}`);
+      };
+
+      // Current Month calculations
       const monthExpenses = useMemo(() => {
-        return expenses.filter(e => e.date?.startsWith(selectedMonth));
+        return expenses.filter(e => e.date && e.date.startsWith(selectedMonth));
       }, [expenses, selectedMonth]);
 
       const currentIncome = Number(incomes[selectedMonth] || 0);
@@ -114,192 +539,246 @@
 
       const balance = currentIncome - totalExpense;
 
+      // Category breakdown
       const categoryTotals = useMemo(() => {
         const map = {};
         monthExpenses.forEach(e => map[e.categoryId] = (map[e.categoryId] || 0) + e.amount);
-        return CATEGORIES.map(c => ({
+        return categories.map(c => ({
           ...c,
           amount: map[c.id] || 0,
           percent: totalExpense ? Math.round(((map[c.id] || 0) / totalExpense) * 100) : 0
         })).filter(c => c.amount > 0).sort((a,b) => b.amount - a.amount);
-      }, [monthExpenses, totalExpense]);
+      }, [monthExpenses, totalExpense, categories]);
 
-      const handleSubmit = (e) => {
-        e.preventDefault();
-        const n = parseFloat(amount);
-        if (!n || n <= 0) return alert("Sahi amount dalein!");
+      // Historical Data Calculations
+      const allMonthStats = useMemo(() => {
+        const monthsSet = new Set();
+        expenses.forEach(e => { if (e.date) monthsSet.add(e.date.slice(0, 7)); });
+        Object.keys(incomes).forEach(m => monthsSet.add(m));
+        monthsSet.add(selectedMonth);
 
-        if (editingId) {
-          setExpenses(prev => prev.map(item => item.id === editingId ? { amount: n, note, categoryId, necessary, date, id: editingId } : item));
-          setEditingId(null);
+        const sortedMonths = Array.from(monthsSet).sort().reverse();
+
+        return sortedMonths.map(m => {
+          let exp = 0, sav = 0;
+          expenses.forEach(e => {
+            if (e.date && e.date.startsWith(m)) {
+              exp += e.amount;
+              if (e.categoryId === "investment") sav += e.amount;
+            }
+          });
+          const inc = Number(incomes[m] || 0);
+          return {
+            month: m,
+            income: inc,
+            expense: exp,
+            savings: sav,
+            balance: inc - exp
+          };
+        });
+      }, [expenses, incomes, selectedMonth]);
+
+      // Actions
+      const handleSave = (draft, id) => {
+        if (id) {
+          setExpenses(prev => prev.map(e => e.id === id ? { ...draft, id } : e));
+          setEditingItem(null);
         } else {
-          setExpenses(prev => [{ id: "exp_" + Date.now(), amount: n, note, categoryId, necessary, date }, ...prev]);
+          setExpenses(prev => [{ ...draft, id: "exp_" + Date.now() }, ...prev]);
         }
-        setAmount("");
-        setNote("");
-      };
-
-      const handleEdit = (item) => {
-        setAmount(item.amount);
-        setNote(item.note);
-        setCategoryId(item.categoryId);
-        setNecessary(item.necessary);
-        setDate(item.date);
-        setEditingId(item.id);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
       };
 
       const handleDelete = (id) => {
-        if (confirm("Kya aap sach me is kharche ko delete karna chahte hain?")) {
+        if (window.confirm("Kya aap is entry ko hatana chahte hain?")) {
           setExpenses(prev => prev.filter(e => e.id !== id));
         }
       };
 
-      const handleClear = () => {
-        if (confirm("Kavach Savdhani: Sara data saaf karna hai?") && prompt("Type karein 'CLEAR'") === "CLEAR") {
-          setExpenses([]);
-          setIncomes({});
-          localStorage.removeItem(EXP_KEY);
-          localStorage.removeItem(INC_KEY);
+      const handleIncomeChange = (val) => {
+        setIncomes(prev => ({ ...prev, [selectedMonth]: val }));
+      };
+
+      const handleExportJSON = () => {
+        const backup = { expenses, incomes, categories };
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backup, null, 2));
+        const dl = document.createElement('a');
+        dl.setAttribute("href", dataStr);
+        dl.setAttribute("download", `HissabKitab_Backup_${todayStr()}.json`);
+        dl.click();
+      };
+
+      const handleImportJSON = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try {
+            const data = JSON.parse(ev.target.result);
+            if (data.expenses && Array.isArray(data.expenses)) {
+              setExpenses(data.expenses);
+              if (data.incomes) setIncomes(data.incomes);
+              if (data.categories && Array.isArray(data.categories)) setCategories(data.categories);
+              alert("Data Safalta-purvak import ho gaya!");
+            } else if (Array.isArray(data)) {
+              setExpenses(data);
+              alert("Expenses restore ho gaye!");
+            }
+          } catch (err) { alert("File padhne me error: Invalid Format"); }
+        };
+        reader.readAsText(file);
+        e.target.value = "";
+      };
+
+      const handleClearAll = () => {
+        if (window.confirm("SAVDHANI! Kya aap sach me sara record delete karna chahte hain?")) {
+          const ans = window.prompt("Pushti ke liye 'SAB MITA DO' likhein:");
+          if (ans === "SAB MITA DO") {
+            setExpenses([]);
+            setIncomes({});
+            alert("Sara hissab saaf kar diya gaya.");
+          }
         }
       };
 
       return (
-        <div className="max-w-6xl mx-auto p-4 sm:p-6 space-y-6">
-          {/* Header */}
-          <header className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-4">
+        <div className="w-full flex flex-col min-h-screen">
+          
+          {/* TOP NAVBAR & MONTH CONTROLLER */}
+          <header className="px-6 py-3.5 border-b border-line flex flex-wrap gap-4 items-center justify-between bg-pine-900/60 sticky top-0 z-20 backdrop-blur-md">
             <div>
-              <h1 className="text-2xl font-black text-amber flex items-center gap-2">💰 HissabKitab Cloud</h1>
-              <p className="text-xs text-fog">Auto-saving Personal Budget Tracker</p>
+              <h1 className="text-xl font-black text-amber flex items-center gap-2">
+                💰 HissabKitab <span className="text-xs bg-amber/10 border border-amber/30 text-amber px-2 py-0.5 rounded-full font-bold">Pro</span>
+              </h1>
+              <p className="text-xs text-fog">Landscape Budget &amp; Historical Expense Manager</p>
             </div>
-            <div className="flex items-center gap-3">
-              <input
-                type="month"
-                value={selectedMonth}
-                onChange={e => setSelectedMonth(e.target.value)}
-                className="bg-pine-850 border border-line px-3 py-1.5 rounded-lg text-sm text-ink outline-none"
-              />
-              <button onClick={handleClear} className="text-xs text-coral hover:bg-coral/10 px-3 py-1.5 rounded border border-coral/30">
-                Sab Mita Do
+
+            {/* Robust Month Navigator */}
+            <div className="flex items-center gap-2 bg-pine-850 p-1.5 rounded-xl border border-line">
+              <button 
+                onClick={() => changeMonthBy(-1)} 
+                className="px-2.5 py-1 text-xs text-fog hover:text-amber bg-pine-900 border border-line rounded-lg"
+                title="Pichla Mahina"
+              >
+                ◀ Prev
+              </button>
+              
+              <div className="px-2 text-center min-w-[140px]">
+                <span className="text-xs font-bold text-amber block">{formatMonthDisplay(selectedMonth)}</span>
+                <input 
+                  type="month" 
+                  value={selectedMonth} 
+                  onChange={(e) => {
+                    if (e.target.value) setSelectedMonth(e.target.value);
+                  }} 
+                  className="bg-transparent text-[11px] text-faint cursor-pointer outline-none border-0"
+                />
+              </div>
+
+              <button 
+                onClick={() => changeMonthBy(1)} 
+                className="px-2.5 py-1 text-xs text-fog hover:text-amber bg-pine-900 border border-line rounded-lg"
+                title="Agle Mahina"
+              >
+                Next ▶
+              </button>
+            </div>
+            
+            {/* Action Tools */}
+            <div className="flex items-center gap-2">
+              <button onClick={handleExportJSON} className="p-2 text-fog hover:text-ink bg-pine-850 border border-line rounded-lg text-xs flex items-center gap-1.5">
+                <IDownload className="w-4 h-4 text-amber" />
+                <span className="hidden sm:inline">Export</span>
+              </button>
+
+              <button onClick={() => fileInputRef.current?.click()} className="p-2 text-fog hover:text-ink bg-pine-850 border border-line rounded-lg text-xs flex items-center gap-1.5">
+                <IUpload className="w-4 h-4 text-mint" />
+                <span className="hidden sm:inline">Import</span>
+              </button>
+              <input ref={fileInputRef} type="file" accept=".json" onChange={handleImportJSON} className="hidden" />
+
+              <button onClick={handleClearAll} className="text-xs text-coral hover:bg-coral/10 px-3 py-2 rounded-lg border border-coral/30 flex items-center gap-1">
+                <ITrash className="w-3.5 h-3.5" /> Sab Mita Do
               </button>
             </div>
           </header>
 
-          {/* Top 3 Cards Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-pine-850 p-5 rounded-2xl border border-line">
-              <span className="text-xs text-fog font-semibold">Mahine Ki Salary / Income</span>
-              <div className="relative mt-2">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-fog font-bold">₹</span>
-                <input
-                  type="number"
-                  value={currentIncome || ""}
-                  onChange={e => setIncomes(prev => ({ ...prev, [selectedMonth]: e.target.value }))}
-                  placeholder="0"
-                  className="field pl-8 text-xl font-bold text-mint"
+          {/* MAIN 3-COLUMN LANDSCAPE DASHBOARD */}
+          <main className="p-6 max-w-[1700px] w-full mx-auto flex-1">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+              
+              {/* LEFT COLUMN: Overview, Income, Savings, Pie Chart (Span 4) */}
+              <div className="md:col-span-4 space-y-5">
+                
+                {/* Salary Input Card */}
+                <div className="bg-pine-850 p-5 rounded-2xl border border-line shadow-xl">
+                  <h4 className="text-xs font-bold text-faint mb-2 flex items-center gap-1.5">
+                    <IWallet className="text-mint w-4 h-4" /> Mahine ki Salary / Total Income
+                  </h4>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-fog font-bold">₹</span>
+                    <input 
+                      type="number" 
+                      value={currentIncome || ""} 
+                      onChange={e => handleIncomeChange(e.target.value)} 
+                      placeholder="Kitne paise aaye is mahine?" 
+                      className="field pl-8 text-lg font-bold text-mint border-mint/30 focus:border-mint" 
+                    />
+                  </div>
+                  <span className="text-[10px] text-fog mt-1.5 block">Yeh income sirf {formatMonthDisplay(selectedMonth)} ke liye save hogi.</span>
+                </div>
+
+                {/* Summary Metrics */}
+                <div className="bg-gradient-to-br from-pine-800 to-pine-900 p-5 rounded-2xl border border-line shadow-xl">
+                  <div className="space-y-4">
+                    <div>
+                      <span className="text-xs text-fog">Kul Kharcha (Total Expense)</span>
+                      <div className="text-3xl font-black text-coral tnum">₹{totalExpense.toLocaleString("en-IN")}</div>
+                    </div>
+                    <div className="pt-3 border-t border-line">
+                      <span className="text-xs text-fog">Bache Hue Paise (Remaining Balance)</span>
+                      <div className={`text-2xl font-bold tnum ${balance >= 0 ? "text-mint" : "text-coral"}`}>
+                        ₹{balance.toLocaleString("en-IN")}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Savings / Investment Area */}
+                <div className="bg-pine-850 p-5 rounded-2xl border border-line shadow-xl relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-4 opacity-10"><IBank className="w-16 h-16 text-mint"/></div>
+                  <h4 className="text-xs font-bold text-mint mb-1 uppercase tracking-wider relative z-10">Investment / Savings Area</h4>
+                  <p className="text-[11px] text-fog mb-2 relative z-10">Is mahine 'Investment' category me bachat kiye gaye paise:</p>
+                  <div className="text-2xl font-black text-ink tnum relative z-10">₹{totalSavings.toLocaleString("en-IN")}</div>
+                </div>
+
+                {/* Donut Chart */}
+                <SplitDonutChart nec={necessaryTotal} fal={faltuTotal} />
+
+              </div>
+
+              {/* CENTER COLUMN: Add/Edit Expense Form (Span 4) */}
+              <div className="md:col-span-4 space-y-5">
+                <AddExpenseForm 
+                  editing={editingItem} 
+                  onSubmit={handleSave} 
+                  onCancel={() => setEditingItem(null)} 
+                  categories={categories}
+                  onAddCategory={handleAddCategory}
                 />
               </div>
-            </div>
 
-            <div className="bg-pine-850 p-5 rounded-2xl border border-line">
-              <span className="text-xs text-fog font-semibold">Kul Kharcha</span>
-              <div className="text-3xl font-black text-coral mt-1 tnum">₹{totalExpense.toLocaleString("en-IN")}</div>
-              <div className="text-[11px] text-fog mt-1">Zaroori: ₹{necessaryTotal.toLocaleString("en-IN")} | Faltu: ₹{faltuTotal.toLocaleString("en-IN")}</div>
-            </div>
-
-            <div className="bg-pine-850 p-5 rounded-2xl border border-line">
-              <span className="text-xs text-fog font-semibold">Bachat / Balance Remaining</span>
-              <div className={`text-3xl font-black mt-1 tnum ${balance >= 0 ? "text-mint" : "text-coral"}`}>
-                ₹{balance.toLocaleString("en-IN")}
-              </div>
-              <div className="text-[11px] text-mint mt-1">Invested / Savings: ₹{totalSavings.toLocaleString("en-IN")}</div>
-            </div>
-          </div>
-
-          {/* Form + Breakdown Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Add Form (5 Cols) */}
-            <div className="lg:col-span-5 bg-pine-850 p-5 rounded-2xl border border-line">
-              <h3 className="font-bold text-sm text-amber mb-3">{editingId ? "Entry Update Karein" : "Naya Kharcha Jodein"}</h3>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="text-xs text-fog block mb-1">Kitna Kharch Hua?</label>
-                  <input
-                    type="number"
-                    value={amount}
-                    onChange={e => setAmount(e.target.value)}
-                    placeholder="₹ 0"
-                    className="field text-lg font-bold tnum"
-                  />
-                  <div className="flex gap-1.5 flex-wrap mt-2">
-                    {QUICK_AMOUNTS.map(q => (
-                      <button key={q} type="button" onClick={() => setAmount(String(q))} className="text-[11px] bg-pine-900 border border-line px-2 py-1 rounded text-fog hover:text-amber">+₹{q}</button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs text-fog block mb-1">Note (Optional)</label>
-                  <input
-                    type="text"
-                    value={note}
-                    onChange={e => setNote(e.target.value)}
-                    placeholder="Jaise: Chai, Petrol, Ration"
-                    className="field text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs text-fog block mb-1">Category</label>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {CATEGORIES.map(c => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => { setCategoryId(c.id); setNecessary(c.necessary); }}
-                        className={`px-2 py-1.5 rounded-lg border text-left text-xs flex items-center gap-1.5 ${categoryId === c.id ? "border-amber bg-amber/10 text-ink" : "border-line text-fog"}`}
-                      >
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
-                        <span className="truncate">{c.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs text-fog block mb-1">Prakar (Type)</label>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => setNecessary(true)} className={`flex-1 py-1.5 text-xs font-bold rounded-lg border ${necessary ? "border-mint bg-mint/15 text-mint" : "border-line text-fog"}`}>Zaroori</button>
-                    <button type="button" onClick={() => setNecessary(false)} className={`flex-1 py-1.5 text-xs font-bold rounded-lg border ${!necessary ? "border-coral bg-coral/15 text-coral" : "border-line text-fog"}`}>Faltu (Want)</button>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs text-fog block mb-1">Tareekh (Date)</label>
-                  <input type="date" value={date} onChange={e => setDate(e.target.value)} className="field text-xs" />
-                </div>
-
-                <button type="submit" className="w-full py-2.5 bg-amber text-pine-950 font-bold rounded-xl text-sm">
-                  {editingId ? "Update Save Karein" : "Kharcha Jod Do"}
-                </button>
-                {editingId && (
-                  <button type="button" onClick={() => { setEditingId(null); setAmount(""); setNote(""); }} className="w-full py-1 text-xs text-fog">Cancel Edit</button>
-                )}
-              </form>
-            </div>
-
-            {/* Category Stats + Timeline (7 Cols) */}
-            <div className="lg:col-span-7 space-y-6">
-              {/* Category Breakdown */}
-              <div className="bg-pine-850 p-5 rounded-2xl border border-line">
-                <h3 className="font-bold text-sm text-ink mb-3">Category Breakdown</h3>
-                {categoryTotals.length === 0 ? <p className="text-xs text-fog">Is mahine koi record nahi hai.</p> : (
-                  <div className="space-y-2">
-                    {categoryTotals.map(c => (
+              {/* RIGHT COLUMN: Category Breakdown & Rozana Timeline (Span 4) */}
+              <div className="md:col-span-4 space-y-5">
+                
+                {/* Category Breakdown */}
+                <div className="bg-pine-850 p-5 rounded-2xl border border-line shadow-xl">
+                  <h4 className="font-bold text-sm text-ink mb-3">Category-wise Hissab Record</h4>
+                  <div className="space-y-3">
+                    {categoryTotals.length === 0 ? <p className="text-xs text-fog">Is mahine koi category data nahi hai.</p> : categoryTotals.map(c => (
                       <div key={c.id}>
                         <div className="flex justify-between text-xs mb-1">
-                          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />{c.label}</span>
-                          <span className="font-bold">₹{c.amount.toLocaleString("en-IN")} ({c.percent}%)</span>
+                          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{backgroundColor: c.color}}></span>{c.label}</span>
+                          <span className="font-bold">₹{c.amount.toLocaleString("en-IN")} <span className="text-fog font-normal">({c.percent}%)</span></span>
                         </div>
                         <div className="w-full bg-pine-950 h-1.5 rounded-full overflow-hidden">
                           <div className="h-full rounded-full" style={{ width: `${c.percent}%`, backgroundColor: c.color }} />
@@ -307,35 +786,56 @@
                       </div>
                     ))}
                   </div>
-                )}
+                </div>
+
+                {/* Rozana Timeline */}
+                <div className="bg-pine-850 p-5 rounded-2xl border border-line shadow-xl">
+                  <div className="flex justify-between items-center mb-4">
+                    <h4 className="font-bold text-sm text-ink">Rozana Entries ({formatMonthDisplay(selectedMonth)})</h4>
+                    <span className="text-xs text-fog">{monthExpenses.length} Records</span>
+                  </div>
+                  
+                  <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                    {monthExpenses.length === 0 ? <div className="text-fog text-xs py-4 text-center">Is mahine me abhi koi kharcha nahi hai.</div> : 
+                      monthExpenses.sort((a,b)=>b.date.localeCompare(a.date) || b.id.localeCompare(a.id)).map(item => {
+                        const cat = catMap[item.categoryId] || { label: "Other", color: "#888" };
+                        return (
+                          <div key={item.id} className="flex items-center justify-between p-3 rounded-xl bg-pine-900 border border-line hover:border-linestrong transition">
+                            <div className="flex-1 mr-3 truncate">
+                              <div className="text-[11px] text-amber font-semibold mb-0.5">{item.date}</div>
+                              <div className="text-sm font-bold text-ink truncate">{item.note || cat.label}</div>
+                              <div className="text-[10px] text-faint flex items-center gap-1.5 mt-0.5">
+                                <span style={{color: cat.color}}>{cat.label}</span> • <span className={item.necessary?"text-mint":"text-coral"}>{item.necessary?"Zaroori":"Faltu"}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3 shrink-0">
+                              <span className="font-black text-sm text-ink tnum">₹{item.amount.toLocaleString("en-IN")}</span>
+                              <div className="flex gap-1">
+                                <button onClick={() => { setEditingItem(item); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="p-1.5 text-fog hover:text-amber bg-white/5 rounded" title="Edit"><IEdit className="w-3.5 h-3.5"/></button>
+                                <button onClick={() => handleDelete(item.id)} className="p-1.5 text-fog hover:text-coral bg-white/5 rounded" title="Delete"><ITrash className="w-3.5 h-3.5"/></button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                    })}
+                  </div>
+                </div>
+
               </div>
 
-              {/* Timeline List */}
-              <div className="bg-pine-850 p-5 rounded-2xl border border-line">
-                <h3 className="font-bold text-sm text-ink mb-3">Roz Ka Hissab</h3>
-                <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-                  {monthExpenses.length === 0 ? <p className="text-xs text-fog">Koi entry darj nahi hai.</p> : (
-                    monthExpenses.map(item => {
-                      const cat = CAT_MAP[item.categoryId] || { label: "Anya", color: "#888" };
-                      return (
-                        <div key={item.id} className="flex items-center justify-between p-2.5 rounded-xl bg-pine-900 border border-line">
-                          <div className="truncate mr-2">
-                            <div className="text-xs font-bold text-ink truncate">{item.note || cat.label}</div>
-                            <div className="text-[10px] text-fog">{item.date} • <span style={{ color: cat.color }}>{cat.label}</span> • <span className={item.necessary ? "text-mint" : "text-coral"}>{item.necessary ? "Zaroori" : "Faltu"}</span></div>
-                          </div>
-                          <div className="flex items-center gap-3 shrink-0">
-                            <span className="font-black text-sm text-ink tnum">₹{item.amount.toLocaleString("en-IN")}</span>
-                            <button onClick={() => handleEdit(item)} className="text-xs text-amber hover:underline">Edit</button>
-                            <button onClick={() => handleDelete(item.id)} className="text-xs text-coral hover:underline">Del</button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
             </div>
-          </div>
+
+            {/* HISTORICAL MULTI-MONTH SECTION */}
+            <HistoricalSection 
+              allMonthStats={allMonthStats} 
+              currentMonth={selectedMonth} 
+              onSelectMonth={(m) => {
+                setSelectedMonth(m);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }} 
+            />
+
+          </main>
         </div>
       );
     }
